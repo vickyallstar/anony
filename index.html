@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anonymous Confession Wall - Share Your Secrets Anonymously</title>
+    <meta name="description" content="Share your thoughts and secrets anonymously. Safe space for honest confessions with community reactions.">
+    <meta name="keywords" content="confession, anonymous, secrets, anonymous confession">
+    <meta name="author" content="Anonymous Confession Wall">
+    <meta property="og:title" content="Anonymous Confession Wall">
+    <meta property="og:description" content="Share your thoughts anonymously">
+    <meta property="og:type" content="website">
+    <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💭</text></svg>">
+    <link rel="stylesheet" href="/public/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Anonymous Confession Wall</h1>
+            <p class="subtitle">Share your thoughts anonymously. No judgment, just reactions.</p>
+        </header>
+
+        <main>
+            <!-- Form Section -->
+            <div class="form-card">
+                <textarea 
+                    id="confessionInput" 
+                    placeholder="Write your confession here... (max 300 characters)" 
+                    maxlength="300"
+                    rows="4"
+                ></textarea>
+                <div class="char-counter">
+                    <span id="charCount">0</span>/300
+                </div>
+                <button id="submitBtn" class="btn-primary">Post Confession 💭</button>
+            </div>
+
+            <!-- Controls -->
+            <div class="controls">
+                <div class="sort-buttons">
+                    <button class="sort-btn active" data-sort="new">✨ Newest</button>
+                    <button class="sort-btn" data-sort="trending">🔥 Trending</button>
+                    <button class="sort-btn" data-sort="random">🎲 Random</button>
+                </div>
+            </div>
+
+            <!-- Feed -->
+            <div id="feed" class="feed"></div>
+
+            <!-- Loading indicator for infinite scroll -->
+            <div id="loadingIndicator" style="display: none; text-align: center; padding: 20px;">
+                <div class="skeleton-card">
+                    <div class="skeleton-line short"></div>
+                    <div class="skeleton-line"></div>
+                    <div class="skeleton-line"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // App State
+        let currentPage = 1;
+        let currentSort = 'new';
+        let isLoading = false;
+        let hasMore = true;
+        let confessions = [];
+
+        // DOM Elements
+        const feed = document.getElementById('feed');
+        const confessionInput = document.getElementById('confessionInput');
+        const submitBtn = document.getElementById('submitBtn');
+        const charCount = document.getElementById('charCount');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const sortBtns = document.querySelectorAll('.sort-btn');
+
+        // Character counter
+        confessionInput.addEventListener('input', () => {
+            const length = confessionInput.value.length;
+            charCount.textContent = length;
+            
+            if (length > 280) {
+                charCount.className = 'char-counter warning';
+            } else if (length > 295) {
+                charCount.className = 'char-counter danger';
+            } else {
+                charCount.className = 'char-counter';
+            }
+        });
+
+        // Submit confession
+        submitBtn.addEventListener('click', async () => {
+            const message = confessionInput.value.trim();
+            
+            if (!message) {
+                showToast('Please write something first', 'error');
+                return;
+            }
+
+            if (message.length > 300) {
+                showToast('Message too long', 'error');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Posting...';
+
+            try {
+                const response = await fetch('/api/confession', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ message })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to post confession');
+                }
+
+                confessionInput.value = '';
+                charCount.textContent = '0';
+                showToast('Confession posted successfully!', 'success');
+                
+                // Refresh feed
+                currentPage = 1;
+                await loadConfessions(true);
+
+            } catch (error) {
+                showToast(error.message, 'error');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Post Confession 💭';
+            }
+        });
+
+        // Load confessions
+        async function loadConfessions(reset = false) {
+            if (isLoading || (!hasMore && !reset)) return;
+
+            isLoading = true;
+            
+            if (reset) {
+                currentPage = 1;
+                hasMore = true;
+                feed.innerHTML = '';
+            }
+
+            loadingIndicator.style.display = 'block';
+
+            try {
+                const response = await fetch(`/api/confession?sort=${currentSort}&page=${currentPage}&limit=10`);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to load confessions');
+                }
+
+                if (reset) {
+                    confessions = data.confessions;
+                } else {
+                    confessions = [...confessions, ...data.confessions];
+                }
+
+                renderConfessions(data.confessions, reset ? 'replace' : 'append');
+                
+                hasMore = data.hasMore;
+                currentPage = data.page + 1;
+
+            } catch (error) {
+                showToast(error.message, 'error');
+            } finally {
+                isLoading = false;
+                loadingIndicator.style.display = 'none';
+            }
+        }
+
+        // Render confessions
+        function renderConfessions(newConfessions, mode = 'append') {
+            if (mode === 'replace') {
+                feed.innerHTML = '';
+            }
+
+            if (newConfessions.length === 0 && mode === 'replace') {
+                feed.innerHTML = `
+                    <div class="empty-state">
+                        <h3>No confessions yet</h3>
+                        <p>Be the first to share your thoughts!</p>
+                    </div>
+                `;
+                return;
+            }
+
+            newConfessions.forEach(confession => {
+                const card = createConfessionCard(confession);
+                feed.appendChild(card);
+            });
+        }
+
+        // Create confession card
+        function createConfessionCard(confession) {
+            const card = document.createElement('div');
+            card.className = 'confession-card';
+            card.dataset.id = confession._id;
+
+            const timeAgo = getTimeAgo(new Date(confession.createdAt));
+            
+            const reactions = ['love', 'funny', 'sad', 'fire', 'angry'];
+            const emojis = { love: '❤️', funny: '😄', sad: '😢', fire: '🔥', angry: '😠' };
+
+            let reactionsHtml = '';
+            reactions.forEach(type => {
+                reactionsHtml += `
+                    <button class="reaction-btn ${type}" data-reaction="${type}" data-id="${confession._id}">
+                        ${emojis[type]} <span class="reaction-count">${confession.reactions[type] || 0}</span>
+                    </button>
+                `;
+            });
+
+            card.innerHTML = `
+                <div class="confession-header">
+                    <span>Anonymous #${confession._id.slice(-4)}</span>
+                    <span>${timeAgo}</span>
+                </div>
+                <div class="confession-message">${escapeHtml(confession.message)}</div>
+                <div class="confession-footer">
+                    <div class="reactions">
+                        ${reactionsHtml}
+                    </div>
+                    <button class="share-btn" onclick="shareConfession('${confession._id}')">
+                        📋 Copy Link
+                    </button>
+                </div>
+            `;
+
+            // Add reaction event listeners
+            const reactionBtns = card.querySelectorAll('.reaction-btn');
+            reactionBtns.forEach(btn => {
+                btn.addEventListener('click', handleReaction);
+            });
+
+            return card;
+        }
+
+        // Handle reaction
+        async function handleReaction(e) {
+            const btn = e.currentTarget;
+            const confessionId = btn.dataset.id;
+            const reactionType = btn.dataset.reaction;
+            const countSpan = btn.querySelector('.reaction-count');
+            
+            // Optimistic update
+            const currentCount = parseInt(countSpan.textContent);
+            countSpan.textContent = currentCount + 1;
+            btn.classList.add('reaction-burst');
+            
+            setTimeout(() => {
+                btn.classList.remove('reaction-burst');
+            }, 500);
+
+            try {
+                const response = await fetch('/api/react', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ confessionId, reactionType })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    // Rollback on error
+                    countSpan.textContent = currentCount;
+                    throw new Error(data.error || 'Failed to add reaction');
+                }
+
+                // Update all reaction counts for this confession
+                const card = document.querySelector(`[data-id="${confessionId}"]`);
+                if (card) {
+                    const reactions = ['love', 'funny', 'sad', 'fire', 'angry'];
+                    reactions.forEach(type => {
+                        const btn = card.querySelector(`[data-reaction="${type}"] .reaction-count`);
+                        if (btn) {
+                            btn.textContent = data.reactions[type];
+                        }
+                    });
+                }
+
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        // Share confession
+        window.shareConfession = async (id) => {
+            const url = `${window.location.origin}?confession=${id}`;
+            
+            try {
+                await navigator.clipboard.writeText(url);
+                showToast('Link copied to clipboard!', 'success');
+            } catch (err) {
+                showToast('Failed to copy link', 'error');
+            }
+        };
+
+        // Helper: Time ago
+        function getTimeAgo(date) {
+            const seconds = Math.floor((new Date() - date) / 1000);
+            
+            const intervals = {
+                year: 31536000,
+                month: 2592000,
+                week: 604800,
+                day: 86400,
+                hour: 3600,
+                minute: 60,
+                second: 1
+            };
+
+            for (let [unit, secondsInUnit] of Object.entries(intervals)) {
+                const interval = Math.floor(seconds / secondsInUnit);
+                
+                if (interval >= 1) {
+                    return interval === 1 ? `1 ${unit} ago` : `${interval} ${unit}s ago`;
+                }
+            }
+            
+            return 'just now';
+        }
+
+        // Helper: Escape HTML
+        function escapeHtml(unsafe) {
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // Toast notification
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+
+        // Sort buttons
+        sortBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                sortBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                currentSort = btn.dataset.sort;
+                currentPage = 1;
+                loadConfessions(true);
+            });
+        });
+
+        // Infinite scroll
+        window.addEventListener('scroll', () => {
+            if (isLoading || !hasMore) return;
+            
+            const scrollHeight = document.documentElement.scrollHeight;
+            const scrollTop = document.documentElement.scrollTop;
+            const clientHeight = document.documentElement.clientHeight;
+            
+            if (scrollTop + clientHeight >= scrollHeight - 100) {
+                loadConfessions();
+            }
+        });
+
+        // Check for shared confession in URL
+        window.addEventListener('load', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const confessionId = urlParams.get('confession');
+            
+            if (confessionId) {
+                // Highlight the confession
+                setTimeout(() => {
+                    const element = document.querySelector(`[data-id="${confessionId}"]`);
+                    if (element) {
+                        element.scrollIntoView({ behavior: 'smooth' });
+                        element.style.boxShadow = '0 0 0 3px var(--accent-color)';
+                        setTimeout(() => {
+                            element.style.boxShadow = '';
+                        }, 2000);
+                    }
+                }, 1000);
+            }
+        });
+
+        // Initial load
+        loadConfessions();
+    </script>
+</body>
+</html>
