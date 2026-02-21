@@ -44,6 +44,7 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   
+  // Handle preflight request
   if (req.method === 'OPTIONS') {
     res.status(200).end();
     return;
@@ -64,9 +65,22 @@ module.exports = async (req, res) => {
       switch (sort) {
         case 'trending':
           sortQuery = { totalReactions: -1, createdAt: -1 };
-          break;
+          const confessions = await query
+            .sort(sortQuery)
+            .skip(skip)
+            .limit(parseInt(limit))
+            .lean();
+          
+          const total = await Confession.countDocuments();
+          const hasMore = skip + confessions.length < total;
+
+          return res.status(200).json({
+            confessions,
+            hasMore,
+            page: parseInt(page)
+          });
+          
         case 'random':
-          // Untuk random, kita bisa menggunakan aggregation pipeline
           const randomConfessions = await Confession.aggregate([
             { $sample: { size: parseInt(limit) } }
           ]);
@@ -75,25 +89,25 @@ module.exports = async (req, res) => {
             hasMore: false,
             page: 1
           });
+          
         case 'new':
         default:
           sortQuery = { createdAt: -1 };
+          const newConfessions = await query
+            .sort(sortQuery)
+            .skip(skip)
+            .limit(parseInt(limit))
+            .lean();
+          
+          const totalNew = await Confession.countDocuments();
+          const hasMoreNew = skip + newConfessions.length < totalNew;
+
+          return res.status(200).json({
+            confessions: newConfessions,
+            hasMore: hasMoreNew,
+            page: parseInt(page)
+          });
       }
-
-      const confessions = await query
-        .sort(sortQuery)
-        .skip(skip)
-        .limit(parseInt(limit))
-        .lean();
-
-      const total = await Confession.countDocuments();
-      const hasMore = skip + confessions.length < total;
-
-      return res.status(200).json({
-        confessions,
-        hasMore,
-        page: parseInt(page)
-      });
     }
 
     // POST - Buat confession baru

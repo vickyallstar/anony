@@ -40,6 +40,7 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   
+  // Handle preflight request
   if (req.method === 'OPTIONS') {
     res.status(200).end();
     return;
@@ -76,10 +77,7 @@ module.exports = async (req, res) => {
 
     const confession = await Confession.findByIdAndUpdate(
       confessionId,
-      { 
-        $inc: updateQuery,
-        $set: { totalReactions: { $add: ["$totalReactions", 1] } }
-      },
+      { $inc: updateQuery },
       { new: true }
     );
 
