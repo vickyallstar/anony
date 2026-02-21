@@ -4,14 +4,13 @@
   "description": "Anonymous Confession Wall with Glassmorphism UI",
   "main": "index.html",
   "scripts": {
-    "start": "vercel dev",
     "dev": "vercel dev",
-    "build": "echo 'No build required'"
+    "build": "echo 'No build required'",
+    "start": "vercel start"
   },
   "dependencies": {
     "mongoose": "^7.5.0",
-    "bad-words": "^3.0.4",
-    "express-rate-limit": "^6.10.0"
+    "bad-words": "^3.0.4"
   },
   "devDependencies": {
     "vercel": "^32.0.0"
